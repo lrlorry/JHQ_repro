@@ -26,7 +26,7 @@ else()
 endif()
 
 set(FAISS_INCLUDE_DIRS ${JHQ_OFFICIAL_ROOT}/external/faiss)
-set(FAISS_LIBRARIES    ${_FAISS_BUILD_DIR}/external/faiss/faiss/libfaiss.a)
+set(FAISS_LIBRARIES    ${_FAISS_BUILD_DIR}/external/faiss/faiss/faiss/libfaiss.a)
 
 message(STATUS "JHQ_OFFICIAL_ROOT: ${JHQ_OFFICIAL_ROOT}")
 message(STATUS "FAISS_LIBRARIES:   ${FAISS_LIBRARIES}")
