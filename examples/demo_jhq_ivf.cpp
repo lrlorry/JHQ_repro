@@ -1,4 +1,5 @@
 #include "io.h"
+#include "io_mmap.h"
 #include "jhq_ivf_index.h"
 #include <chrono>
 #include <cstdio>
@@ -24,8 +25,13 @@ int main(int argc, char** argv) {
             argv[0]);
         return 1;
     }
-    int nb, d, nq, dq, ngt, dgt;
-    auto base  = read_fvecs(argv[1], &nb,  &d);
+    int nq, dq, ngt, dgt;
+    // Base is by far the largest of the three (query/gt are a few thousand
+    // rows at most) -- loaded via mmap, not read_fvecs(), so it isn't fully
+    // materialized in host RAM. See io_mmap.h for why.
+    MmapFloatMatrix base = load_fvecs_mmap(argv[1]);
+    int nb = base.n;
+    int d  = base.d;
     auto query = read_fvecs(argv[2], &nq,  &dq);
     auto gt    = read_ivecs(argv[3], &ngt, &dgt);
 
@@ -48,9 +54,9 @@ int main(int argc, char** argv) {
     JHQIVFIndex idx(d, M, B, Br, nlist, nlist, alpha);
     printf("Training...\n");
     auto t0 = std::chrono::high_resolution_clock::now();
-    idx.train(base.data(), nb);
+    idx.train(base.data, nb);
     printf("Encoding %d vectors...\n", nb);
-    idx.add(base.data(), nb);
+    idx.add(base.data, nb);
     auto t1 = std::chrono::high_resolution_clock::now();
     printf("Index build: %.2f s\n",
            std::chrono::duration<double>(t1 - t0).count());
