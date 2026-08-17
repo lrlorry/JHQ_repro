@@ -225,9 +225,13 @@ void JHQIVFIndex::search_one(const float* q_rot, int k,
     cb_->build_flat_lut(q_rot, flat_lut.data());
 
     // 统计这 nprobe 个簇里总向量数，确定候选集大小
+    // primary_only_ 模式（JQ ablation）没有 phase 2 精排，候选池就是最终
+    // top-k 本身，不需要像 JHQ 那样多取 alpha*k 条给精排阶段留余量
     int total_cands = 0;
     for (int c : clusters) total_cands += (int)list_entries_[c].size();
-    int ck = std::min((int)std::ceil(alpha_ * k), total_cands);
+    int ck = primary_only_
+                 ? std::min(k, total_cands)
+                 : std::min((int)std::ceil(alpha_ * k), total_cands);
 
     // Phase 1: 主码 ADC 粗筛 → top-αk 候选
     // 候选记录 (primary_dist, cluster, pos_in_cluster)
@@ -262,6 +266,20 @@ void JHQIVFIndex::search_one(const float* q_rot, int k,
                               return std::get<0>(a) < std::get<0>(b);
                           });
         all_cands.resize(ck);
+    }
+
+    if (primary_only_) {
+        // all_cands[0, take) 已经是按 primary_dist 升序排好的最终结果
+        // (partial_sort 分支排过；未触发该分支时 all_cands.size()==ck<=k，
+        // 全部返回，顺序不影响 recall@k 的集合命中判定)
+        int take = std::min(k, (int)all_cands.size());
+        for (int i = 0; i < take; i++) {
+            dists[i]  = std::get<0>(all_cands[i]);
+            labels[i] = list_entries_[std::get<1>(all_cands[i])]
+                            [std::get<2>(all_cands[i])].orig_idx;
+        }
+        for (int i = take; i < k; i++) { dists[i] = 1e30f; labels[i] = -1; }
+        return;
     }
 
     // Phase 2: 残差精排

@@ -25,9 +25,14 @@ public:
     void set_nprobe(int nprobe) { nprobe_ = nprobe; }
     int  ntotal() const { return ntotal_; }
 
+    // true: 只用 Primary(JQ)码 ADC 距离出 top-k，跳过 Residual 精排阶段
+    // (ablation baseline -- 对应论文里单独报告的 "JQ" 方法，而非完整 JHQ)
+    void set_primary_only(bool v) { primary_only_ = v; }
+
 private:
     int   d_, M_, B_, Br_, nlist_, nprobe_, ntotal_, Kr_;
     float alpha_;
+    bool  primary_only_ = false;
 
     JLTransform jl_;
     std::unique_ptr<LloydMaxCodebook> cb_;

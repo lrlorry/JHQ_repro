@@ -16,12 +16,41 @@ static float recall_at_k(const int* pred, const int* gt,
     return (float)hits / ((float)nq * k);
 }
 
+// Prints one "=== label ===" + nprobe/recall/qps table. sweep_cpu_ivf.py
+// (JHQ_GPU/scripts) matches the "=== ... ===" marker to tag subsequent
+// rows with this method name, so both tables land in one CSV.
+static void run_sweep(JHQIVFIndex& idx, const char* label, int nlist,
+                       const float* query, int nq, int k,
+                       const int* gt, int dgt) {
+    printf("\n=== %s ===\n", label);
+    printf("%-10s %-12s %-10s\n", "nprobe", "Recall@10", "QPS");
+    printf("%-10s %-12s %-10s\n", "------", "---------", "---");
+
+    std::vector<float> dists((size_t)nq * k);
+    std::vector<int>   ids((size_t)nq * k);
+
+    for (int nprobe : {1, 2, 4, 8, 16, 32, 64, 128}) {
+        if (nprobe > nlist) break;
+        idx.set_nprobe(nprobe);
+
+        auto t2 = std::chrono::high_resolution_clock::now();
+        idx.search(query, nq, k, dists.data(), ids.data());
+        auto t3 = std::chrono::high_resolution_clock::now();
+
+        float recall = recall_at_k(ids.data(), gt, nq, k, dgt);
+        double qps   = nq / std::chrono::duration<double>(t3 - t2).count();
+        printf("%-10d %-12.4f %-10.1f\n", nprobe, recall, qps);
+    }
+}
+
 int main(int argc, char** argv) {
     if (argc < 4) {
         fprintf(stderr,
             "Usage: %s base.fvecs query.fvecs gt.ivecs "
             "[M] [B] [Br] [nlist] [alpha] [k]\n"
-            "  sweeps nprobe ∈ {1,2,4,8,16,32,64,128}\n",
+            "  Builds one index, then sweeps nprobe in {1,2,4,8,16,32,64,128}\n"
+            "  for two methods: JHQ-CPU-IVF (primary + residual refine) and\n"
+            "  JQ-CPU-IVF (primary-only ablation, no residual stage)\n",
             argv[0]);
         return 1;
     }
@@ -61,23 +90,10 @@ int main(int argc, char** argv) {
     printf("Index build: %.2f s\n",
            std::chrono::duration<double>(t1 - t0).count());
 
-    printf("\n%-10s %-12s %-10s\n", "nprobe", "Recall@10", "QPS");
-    printf("%-10s %-12s %-10s\n", "------", "---------", "---");
+    run_sweep(idx, "JHQ-CPU-IVF", nlist, query.data(), nq, k, gt.data(), dgt);
 
-    std::vector<float> dists((size_t)nq * k);
-    std::vector<int>   ids((size_t)nq * k);
+    idx.set_primary_only(true);
+    run_sweep(idx, "JQ-CPU-IVF", nlist, query.data(), nq, k, gt.data(), dgt);
 
-    for (int nprobe : {1, 2, 4, 8, 16, 32, 64, 128}) {
-        if (nprobe > nlist) break;
-        idx.set_nprobe(nprobe);
-
-        auto t2 = std::chrono::high_resolution_clock::now();
-        idx.search(query.data(), nq, k, dists.data(), ids.data());
-        auto t3 = std::chrono::high_resolution_clock::now();
-
-        float recall = recall_at_k(ids.data(), gt.data(), nq, k, dgt);
-        double qps   = nq / std::chrono::duration<double>(t3 - t2).count();
-        printf("%-10d %-12.4f %-10.1f\n", nprobe, recall, qps);
-    }
     return 0;
 }
